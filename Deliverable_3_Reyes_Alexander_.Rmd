@@ -1,0 +1,172 @@
+---
+title: "Deliverable 3: Data Processing"
+author: "Alexander Reyes"
+output: html_document
+---
+
+## About my dataset
+
+For this project, I am looking at crimes reported in Los Angeles from 2020 to 2024. I chose this dataset because I want to see if the number of reported crimes went up or down over time. I also want to find the most common crimes and which areas had the most reports.
+
+My original dataset description lists 1,004,894 observations and 28 variables. Each row represents a crime report. The numbers below will be calculated from the CSV file I use.
+
+## Load the data
+
+Before knitting, download the CSV from the [City of Los Angeles crime dataset](https://data.lacity.org/d/2nrs-mtv8) and save it in the same folder as this R Markdown file. Name it **Crime_Data.csv**.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+
+crime <- read.csv("Crime_Data.csv", check.names = FALSE)
+```
+
+## Dataset size
+
+```{r size}
+nrow(crime)
+ncol(crime)
+```
+
+The first number is how many crime reports are in the file. The second number is how many variables it has. The number of rows might be different from my proposal if the downloaded file is a different version.
+
+## Data dictionary
+
+This table lists the original variables and what they mean. Some columns contain numbers that are actually codes, such as the crime code and area number. I count those as categorical because they are used as labels.
+
+```{r dictionary}
+dictionary <- data.frame(
+  Variable = c("DR_NO", "Date Rptd", "DATE OCC", "TIME OCC", "AREA", "AREA NAME", "Rpt Dist No", "Part 1-2", "Crm Cd", "Crm Cd Desc", "Mocodes", "Vict Age", "Vict Sex", "Vict Descent", "Premis Cd", "Premis Desc", "Weapon Used Cd", "Weapon Desc", "Status", "Status Desc", "Crm Cd 1", "Crm Cd 2", "Crm Cd 3", "Crm Cd 4", "LOCATION", "Cross Street", "LAT", "LON"),
+  Meaning = c("Report number", "Date reported", "Date crime happened", "Time crime happened", "Police area code", "Police area name", "Reporting district", "Crime classification", "Main crime code", "Type of crime", "Codes describing the incident", "Age of victim", "Victim sex", "Victim descent", "Location type code", "Location type", "Weapon code", "Weapon description", "Case status code", "Case status description", "First crime code", "Second crime code", "Third crime code", "Fourth crime code", "Approximate address", "Cross street", "Latitude", "Longitude"),
+  Type = c("Categorical", "Date", "Date", "Numerical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Numerical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Categorical", "Numerical", "Numerical")
+)
+
+kable(dictionary)
+```
+
+## Prepare the data
+
+I only want to use reports for crimes that happened from 2020 to 2024. I used the date the crime happened and made a new column for the year.
+
+```{r cleaning}
+crime$Year <- as.numeric(format(as.Date(substr(crime$`DATE OCC`, 1, 11), format = "%Y %b %d"), "%Y"))
+
+crime <- crime %>%
+  filter(Year >= 2020, Year <= 2024)
+
+nrow(crime)
+```
+
+This shows how many reports remain after keeping only those five years. Reports without a usable occurrence year are not included in the charts below.
+
+## Crime reports by year
+
+```{r years}
+by_year <- crime %>%
+  count(Year)
+
+kable(by_year)
+```
+
+The table shows the number of crime reports for each year. This helps me compare the number of reports from 2020 to 2024.
+
+```{r year-graph}
+ggplot(by_year, aes(x = factor(Year), y = n)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Reported crimes by year", x = "Year", y = "Number of reports")
+```
+
+In this graph, taller bars mean more crime reports that year. I can use it to see whether the number of reports increased or decreased.
+
+## Most common crimes
+
+```{r top-crimes}
+by_crime <- crime %>%
+  filter(!is.na(`Crm Cd Desc`), `Crm Cd Desc` != "") %>%
+  count(`Crm Cd Desc`, sort = TRUE)
+
+top_crimes <- head(by_crime, 10)
+kable(top_crimes)
+```
+
+This table shows the ten crime descriptions that appear the most in the dataset. The first row is the most common one.
+
+```{r crime-graph}
+ggplot(top_crimes, aes(x = reorder(`Crm Cd Desc`, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Ten most common crimes", x = "Crime type", y = "Number of reports")
+```
+
+The longer the bar, the more often that crime was reported. I used horizontal bars because the crime names are long.
+
+## Areas with the most reports
+
+```{r top-areas}
+by_area <- crime %>%
+  filter(!is.na(`AREA NAME`), `AREA NAME` != "") %>%
+  count(`AREA NAME`, sort = TRUE)
+
+top_areas <- head(by_area, 10)
+kable(top_areas)
+```
+
+This table shows which ten LAPD areas had the most reports. It only compares the number of reports, not the population of each area.
+
+```{r area-graph}
+ggplot(top_areas, aes(x = reorder(`AREA NAME`, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Ten areas with the most crime reports", x = "Area", y = "Number of reports")
+```
+
+This graph makes it easier to compare areas. Some areas might have more reports simply because more people live or spend time there.
+
+## Victim age
+
+```{r ages}
+ages <- crime %>%
+  filter(`Vict Age` > 0, `Vict Age` <= 110)
+
+summary(ages$`Vict Age`)
+```
+
+This summary shows the smallest and largest recorded ages, the average, and the middle age. I left out zero and unusually high ages so they do not affect the summary.
+
+```{r age-graph}
+ggplot(ages, aes(x = `Vict Age`)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white") +
+  labs(title = "Victim ages", x = "Age", y = "Number of reports")
+```
+
+Each bar represents a range of five ages. The taller bars show age ranges that appear more often in reports with usable age information.
+
+## Data cleanliness
+
+```{r missing}
+missing <- data.frame(
+  Variable = names(crime),
+  Missing = colSums(is.na(crime) | crime == "")
+)
+
+kable(missing)
+```
+
+This table checks for missing values or empty cells in each column after filtering. Some columns may be empty because the information was not recorded or did not apply to the crime. I did not delete every row with missing data because I still need some of those reports for the other comparisons.
+
+```{r duplicates}
+sum(duplicated(crime$DR_NO))
+```
+
+This checks whether any report numbers repeat. A repeated number is something I would want to look into before deciding if it should be removed. Some fields use codes that are harder to understand, but the description columns help explain them. I have not changed any crime names or area names without checking whether they are actually incorrect.
+
+## Discussion
+
+I chose this dataset because I wanted to see how crime reports in Los Angeles changed between 2020 and 2024. The year with the most reports in this file is **`r by_year$Year[which.max(by_year$n)]`**. The most common crime description is **`r top_crimes[[1]][1]`**, and the area with the most reports is **`r top_areas[[1]][1]`**. I think the most interesting part is being able to see the different kinds of crime and where they were reported. I also understand that these numbers only show crimes included in the police data, so they do not tell me about every crime that happened.
+
+One thing I am concerned about is the missing information in some columns. I also want to be careful when comparing years because a difference in the number of reports does not always mean crime itself changed by the same amount. The LAPD changed its records system in March 2024, which could affect comparisons with earlier years. For the next part of my project, I want to look at whether the most common crimes changed each year and whether the same areas continued to have the most reports. This would help me answer the main questions from my proposal.
+
+## Source
+
+City of Los Angeles, [Crime Data from 2020 to 2024](https://data.lacity.org/d/2nrs-mtv8). This dataset contains police-reported incidents and does not include every crime that may have occurred.
